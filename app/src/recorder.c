@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #include "recorder.h"
 
 #include <assert.h>
@@ -453,12 +454,7 @@ end:
 
 static bool
 sc_recorder_record(struct sc_recorder *recorder) {
-    bool ok = sc_recorder_open_output_file(recorder);
-    if (!ok) {
-        return false;
-    }
-
-    ok = sc_recorder_process_packets(recorder);
+    bool ok = sc_recorder_process_packets(recorder);
     sc_recorder_close_output_file(recorder);
     return ok;
 }
@@ -828,9 +824,15 @@ error_free_filename:
 
 bool
 sc_recorder_start(struct sc_recorder *recorder) {
+    // Stream metadata may arrive immediately (notably audio over an hdc
+    // tunnel). Publish a valid muxer before producers can open packet sinks.
+    if (!sc_recorder_open_output_file(recorder)) {
+        return false;
+    }
     bool ok = sc_thread_create(&recorder->thread, run_recorder,
                                "scrcpy-recorder", recorder);
     if (!ok) {
+        sc_recorder_close_output_file(recorder);
         LOGE("Could not start recorder thread");
         return false;
     }

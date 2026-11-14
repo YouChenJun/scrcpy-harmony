@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "Scrcpy Harmony"
+    },
+    {
+      "name": "camera_reason",
+      "value": "提供电脑端摄像头预览"
+    },
+    {
+      "name": "microphone_reason",
+      "value": "将设备声音传输到电脑"
+    }
+  ]
+}

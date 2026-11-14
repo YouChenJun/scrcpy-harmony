@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #ifndef SC_SERVER_H
 #define SC_SERVER_H
 
@@ -40,6 +41,7 @@ struct sc_server_params {
     struct sc_port_range port_range;
     uint32_t tunnel_host;
     uint16_t tunnel_port;
+    uint16_t harmony_port;
     uint16_t max_size;
     uint8_t min_size_alignment;
     uint32_t video_bit_rate;

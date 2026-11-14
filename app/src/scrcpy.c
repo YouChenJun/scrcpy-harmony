@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #include "scrcpy.h"
 
 #include <assert.h>
@@ -440,6 +441,7 @@ scrcpy(struct scrcpy_options *options) {
         .port_range = options->port_range,
         .tunnel_host = options->tunnel_host,
         .tunnel_port = options->tunnel_port,
+        .harmony_port = options->harmony_port,
         .min_size_alignment = options->min_size_alignment,
         .max_size = options->max_size,
         .video_bit_rate = options->video_bit_rate,
@@ -579,13 +581,13 @@ scrcpy(struct scrcpy_options *options) {
     }
 
     const char *serial = s->server.serial;
-    assert(serial);
+    assert(serial || options->harmony_port);
 
     struct sc_file_pusher *fp = NULL;
 
-    if (options->window && options->control) {
+    if (options->window && options->control && serial) {
         if (!sc_file_pusher_init(&s->file_pusher, &s->controller, serial,
-                                 options->push_target)) {
+                                 options->push_target, options->harmony_port != 0)) {
             goto end;
         }
         fp = &s->file_pusher;

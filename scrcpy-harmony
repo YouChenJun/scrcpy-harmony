@@ -1,0 +1,306 @@
+#!/usr/bin/env python3
+"""Build, deploy and run the OpenHarmony backend with the scrcpy desktop client."""
+import argparse
+import os
+from pathlib import Path
+import plistlib
+import re
+import shlex
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parent
+BUILD = ROOT / "build-harmony"
+
+
+def run(command, **kwargs):
+    return subprocess.run(command, check=True, **kwargs)
+
+
+def native_sdk(explicit):
+    candidates = [explicit, os.environ.get("OHOS_NDK_HOME"),
+                  str(Path.home() / "harmonyos/command-line-tools/sdk/default/openharmony/native")]
+    for candidate in candidates:
+        if candidate:
+            path = Path(candidate).expanduser().resolve()
+            if (path / "llvm/bin/aarch64-unknown-linux-ohos-clang++").is_file():
+                return path
+    raise RuntimeError("Native SDK not found. Pass --sdk /path/to/openharmony/native "
+                       "or set OHOS_NDK_HOME (API 21 headers recommended).")
+
+
+def build(sdk):
+    for tool in ("meson", "ninja", "pkg-config"):
+        if not shutil.which(tool):
+            raise RuntimeError(f"Missing {tool}. On macOS: brew install meson ninja sdl3 ffmpeg libusb")
+    BUILD.mkdir(exist_ok=True)
+    server = BUILD / "scrcpy-harmony-server"
+    source = ROOT / "harmony/server.cpp"
+    if not server.exists() or server.stat().st_mtime < max(source.stat().st_mtime, max(f.stat().st_mtime for f in (ROOT / "harmony").glob("*.h"))):
+        run([str(sdk / "llvm/bin/aarch64-unknown-linux-ohos-clang++"),
+             "-std=c++17", "-O2", "-Wall", "-Wextra", "-static-libstdc++",
+             str(source), "-o", str(server), "-lnative_avscreen_capture",
+             "-lnative_media_venc", "-lnative_media_core", "-lnative_media_codecbase",
+             "-lnative_window", "-lnative_display_manager", "-lnative_media_acodec", "-lpasteboard", "-ludmf", "-ldl", "-lohaudio", "-lohcamera"])
+    host = BUILD / "host"
+    if not (host / "build.ninja").exists():
+        run(["meson", "setup", str(host), str(ROOT),
+             "-Dcompile_server=false", "-Dbuildtype=debugoptimized"])
+    run(["ninja", "-C", str(host)])
+    client = host / "app/scrcpy"
+    if sys.platform == "darwin":
+        # A bundle gives macOS a stable app identity (Dock, accessibility and
+        # window focus), and a double-clickable launcher for subsequent runs.
+        bundle = BUILD / "Scrcpy Harmony.app/Contents"
+        executables = bundle / "MacOS"
+        executables.mkdir(parents=True, exist_ok=True)
+        bundled_client = executables / "scrcpy"
+        if not bundled_client.exists() or bundled_client.stat().st_mtime < client.stat().st_mtime:
+            # Keep a running mirror's executable inode intact during rebuilds.
+            staged_client = executables / "scrcpy.new"
+            shutil.copy2(client, staged_client)
+            staged_client.replace(bundled_client)
+        with (bundle / "Info.plist").open("wb") as info:
+            plistlib.dump({"CFBundleIdentifier": "io.github.youchenjun.scrcpyharmony",
+                          "CFBundleName": "Scrcpy Harmony", "CFBundlePackageType": "APPL",
+                          "CFBundleExecutable": "scrcpy-harmony", "CFBundleVersion": "1",
+                          "NSHighResolutionCapable": True}, info)
+        entry = executables / "scrcpy-harmony"
+        tool_dirs = list(dict.fromkeys(str(Path(p).parent) for name in ("hdc", "meson", "ninja", "pkg-config")
+                                      if (p := shutil.which(name))))
+        entry.write_text("#!/bin/sh\nexport PATH=" + shlex.quote(":".join(tool_dirs)) + ':"$PATH"\nexec '
+                         + shlex.join([sys.executable, str(ROOT / "scrcpy-harmony")]) + ' "$@"\n')
+        entry.chmod(0o755)
+        client = bundled_client
+    return server, client
+
+
+def bounded_int(low, high):
+    def parse(value):
+        n = int(value)
+        if not low <= n <= high:
+            raise argparse.ArgumentTypeError(f"must be between {low} and {high}")
+        return n
+    return parse
+
+
+def bitrate(value, minimum=64000, maximum=100000000):
+    match = re.fullmatch(r"([0-9]+)([kKmM]?)", value)
+    if not match:
+        raise argparse.ArgumentTypeError("use a number, optionally suffixed K or M")
+    n = int(match[1]) * {"": 1, "k": 1000, "m": 1000000}[match[2].lower()]
+    if not minimum <= n <= maximum:
+        raise argparse.ArgumentTypeError(f"bit rate must be between {minimum} and {maximum}")
+    return n
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__, allow_abbrev=False,
+        epilog="Other options are passed to scrcpy, e.g. --record=screen.mkv --fullscreen.")
+    parser.add_argument("--sdk", help="OpenHarmony native SDK directory")
+    parser.add_argument("--backend", choices=["agent", "root"], default="agent",
+                        help="media companion (root input when control is enabled), or the native root backend")
+    parser.add_argument("--build-only", action="store_true")
+    parser.add_argument("-s", "--serial", help="hdc target (required when multiple devices are connected)")
+    parser.add_argument("-m", "--max-size", type=bounded_int(0, 8192), default=0)
+    parser.add_argument("--max-fps", type=bounded_int(0, 120), default=0)
+    parser.add_argument("-b", "--video-bit-rate", type=bitrate, default=8000000)
+    parser.add_argument("--video-codec", choices=["h264", "h265", "av1"], default="h264")
+    parser.add_argument("-n", "--no-control", action="store_true",
+                        help="view only; the agent backend runs without a root daemon")
+    parser.add_argument("-w", "--stay-awake", action="store_true")
+    parser.add_argument("--video-source", choices=["display", "camera"], default="display")
+    parser.add_argument("--camera-id")
+    parser.add_argument("--camera-facing", choices=["front", "back"])
+    parser.add_argument("--camera-size")
+    parser.add_argument("--camera-fps", type=bounded_int(1, 120))
+    parser.add_argument("--camera-torch", action="store_true")
+    parser.add_argument("--audio-source", choices=["output", "mic"])
+    parser.add_argument("--no-audio", action="store_true")
+    parser.add_argument("--audio-codec", choices=["opus", "aac", "flac", "raw"], default="opus")
+    parser.add_argument("--audio-bit-rate", type=lambda value: bitrate(value, 6000, 1000000), default=128000)
+    parser.add_argument("--no-clipboard-autosync", action="store_true")
+    parser.add_argument("--new-display", nargs="?", const="1280x720")
+    parser.add_argument("--display-id", type=bounded_int(0, 100000))
+    args, extra = parser.parse_known_args()
+    args.audio_source = args.audio_source or ("mic" if args.video_source == "camera" else "output")
+    if args.video_source == "camera" and args.new_display:
+        parser.error("--new-display is only available for display capture")
+    if args.new_display and args.display_id is not None:
+        parser.error("choose --new-display or --display-id")
+    if args.stay_awake and args.no_control:
+        parser.error("--stay-awake requires device control")
+    if args.video_source == "camera" and (args.display_id is not None or args.audio_source == "output"):
+        parser.error("camera capture supports microphone audio; use --audio-source=mic or --no-audio")
+    if args.camera_size and not re.fullmatch(r"[0-9]{3,4}x[0-9]{3,4}", args.camera_size):
+        parser.error("--camera-size expects WIDTHxHEIGHT")
+    if args.camera_size and args.max_size:
+        parser.error("choose --camera-size or --max-size for camera capture")
+    if args.new_display and not re.fullmatch(r"[0-9]{3,4}x[0-9]{3,4}", args.new_display):
+        parser.error("--new-display expects WIDTHxHEIGHT")
+    if args.new_display and any(not 128 <= int(value) <= 8192 for value in args.new_display.split("x")):
+        parser.error("--new-display dimensions must be between 128 and 8192")
+    if extra[:1] == ["--"]:
+        extra.pop(0)
+    args.no_control |= any(x in ("-n", "--no-control") for x in extra)
+    args.no_audio |= "--no-audio" in extra
+    args.no_clipboard_autosync |= "--no-clipboard-autosync" in extra
+    if any(x == "--harmony-port" or x.startswith("--harmony-port=") for x in extra):
+        parser.error("--harmony-port is managed by this launcher")
+    server, client = build(native_sdk(args.sdk))
+    if args.build_only:
+        print(f"Built {client}\nBuilt {server}")
+        return 0
+    # Validate passthrough options before changing anything on the device.
+    # --help runs the complete parser but does not open a connection/window.
+    forwarded = (["--no-control"] if args.no_control else [])
+    forwarded += (["--no-audio"] if args.no_audio else [f"--audio-codec={args.audio_codec}"])
+    if args.no_clipboard_autosync: forwarded.append("--no-clipboard-autosync")
+    forwarded += [f"--audio-source={args.audio_source}"]
+    forwarded += [f"--video-codec={args.video_codec}"]
+    if args.video_source == "camera":
+        forwarded += ["--video-source=camera"]
+        for option in ("camera_id", "camera_facing", "camera_size", "camera_fps"):
+            value = getattr(args, option)
+            if value is not None: forwarded.append("--" + option.replace("_", "-") + "=" + str(value))
+        if args.camera_torch: forwarded.append("--camera-torch")
+    client_flags = ["--harmony-port=12345", *forwarded, *extra]
+    run([str(client), *client_flags, "--help"], stdout=subprocess.DEVNULL)
+    hdc = shutil.which(os.environ.get("HDC", "hdc"))
+    if not hdc:
+        raise RuntimeError("hdc not found. Add the HarmonyOS SDK toolchains directory to PATH.")
+    result = run([hdc, "list", "targets"], capture_output=True, text=True)
+    targets = [line.strip() for line in result.stdout.splitlines()
+               if line.strip() and line.strip() != "[Empty]"]
+    if args.serial:
+        if args.serial not in targets:
+            raise RuntimeError(f"hdc target {args.serial!r} is not online")
+        target = args.serial
+    elif len(targets) == 1:
+        target = targets[0]
+    else:
+        raise RuntimeError(f"Expected one hdc device, found {len(targets)}. Select one with -s SERIAL.")
+    base = [hdc, "-t", target]
+
+    def device(*command, **kwargs):
+        result = run([*base, *command], **kwargs)
+        # hdc sometimes reports transport/forwarding errors with exit code 0.
+        if kwargs.get("capture_output") and "[Fail]" in (result.stdout or ""):
+            raise RuntimeError(result.stdout.strip())
+        return result
+
+    info = device("shell", "uname -m; param get const.ohos.fullname", capture_output=True, text=True).stdout
+    if "aarch64" not in info or not re.search(r"Harmony|OpenHarmony", info, re.I):
+        raise RuntimeError(f"Expected an arm64 HarmonyOS/OpenHarmony device; got {info.strip()!r}")
+    if args.backend == "agent":
+        from harmony.launch_agent import run_agent
+        return run_agent(args, extra, forwarded, native_sdk(args.sdk), target, hdc, server, client)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    remote_dir = f"/data/local/tmp/scrcpy-harmony-{uuid.uuid4().hex}"
+    remote = remote_dir + "/server"
+    remote_pid = []
+    ready = threading.Event()
+    forward = False
+    process = None
+    desktop = None
+    pump = None
+    print(f"[harmony] Device: {target}; {info.strip()}", flush=True)
+    try:
+        device("shell", f"mkdir -m 700 {remote_dir}", capture_output=True, text=True)
+        device("file", "send", str(server), remote)
+        device("shell", f"chmod 700 {remote}; mkdir -p /storage/media/100/local/files/Docs/scrcpy", capture_output=True, text=True)
+        device("fport", f"tcp:{port}", f"tcp:{port}", capture_output=True, text=True)
+        forward = True
+        auth = uuid.uuid4().hex
+        command = [remote, str(port), str(args.max_size), str(args.max_fps),
+                   str(args.video_bit_rate), "0" if args.no_control else "1",
+                   "auth=" + auth, "audio_source=" + args.audio_source,
+                   "video_codec=" + args.video_codec,
+                   "audio=false" if args.no_audio else "audio=true", f"audio_codec={args.audio_codec}",
+                   f"audio_bitrate={args.audio_bit_rate}"]
+        if args.video_source == "camera":
+            command.append("video_source=camera")
+            for option in ("camera_id", "camera_facing", "camera_size", "camera_fps"):
+                value = getattr(args, option)
+                if value is not None: command.append(option + "=" + str(value))
+            if args.camera_torch: command.append("camera_torch=true")
+        if args.no_clipboard_autosync: command.append("clipboard=false")
+        if args.stay_awake: command.append("stay_awake=true")
+        if args.new_display: command.append(f"new_display={args.new_display}")
+        if args.display_id is not None: command.append(f"display_id={args.display_id}")
+        process = subprocess.Popen([*base, "shell", "exec " + shlex.join(command)],
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   text=True, bufsize=1)
+
+        def read_logs():
+            for line in process.stdout:
+                print(line.rstrip(), flush=True)
+                match = re.search(r"\[harmony\] pid: ([0-9]+)", line)
+                if match:
+                    remote_pid.append(int(match[1]))
+                if "[harmony] ready on device loopback:" in line:
+                    ready.set()
+
+        pump = threading.Thread(target=read_logs, daemon=True)
+        pump.start()
+        deadline = time.monotonic() + 15
+        while not ready.wait(0.1):
+            if process.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError("Device server did not start. Check the device permissions and SDK/API version.")
+        env = os.environ.copy()
+        env.setdefault("SCRCPY_ICON_DIR", str(ROOT / "app/data"))
+        env["HDC"] = hdc
+        env["SCRCPY_HARMONY_SERIAL"] = target
+        env["SCRCPY_HARMONY_AUTH"] = auth
+        env.pop("SCRCPY_HARMONY_CONTROL_PORT", None)
+        desktop = subprocess.Popen([str(client), f"--harmony-port={port}",
+                                    *forwarded, *extra], env=env)
+        return desktop.wait()
+    finally:
+        if desktop and desktop.poll() is None:
+            desktop.terminate()
+            try:
+                desktop.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                desktop.kill()
+                desktop.wait()
+        if process:
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                if remote_pid:
+                    # Kill only this session's process, never other device tools.
+                    subprocess.run([*base, "shell", f"kill -TERM {remote_pid[0]}"],
+                                   capture_output=True, timeout=5)
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            if pump:
+                pump.join(timeout=2)
+            process.stdout.close()
+        if forward:
+            subprocess.run([*base, "fport", "rm", f"tcp:{port}", f"tcp:{port}"],
+                           capture_output=True, timeout=5)
+        subprocess.run([*base, "shell", f"rm -f {remote}; rmdir {remote_dir}"],
+                       capture_output=True, timeout=5)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        print(f"scrcpy-harmony: {exc}", file=sys.stderr)
+        sys.exit(1)

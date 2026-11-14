@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #ifndef SC_FILE_PUSHER_H
 #define SC_FILE_PUSHER_H
 
@@ -27,6 +28,7 @@ struct sc_file_pusher {
     struct sc_controller *controller; // used to send SCAN_FILE requests
     char *serial;
     const char *push_target;
+    bool harmony;
     sc_thread thread;
     sc_mutex mutex;
     sc_cond event_cond;
@@ -39,7 +41,7 @@ struct sc_file_pusher {
 
 bool
 sc_file_pusher_init(struct sc_file_pusher *fp, struct sc_controller *controller,
-                    const char *serial, const char *push_target);
+                    const char *serial, const char *push_target, bool harmony);
 
 void
 sc_file_pusher_destroy(struct sc_file_pusher *fp);

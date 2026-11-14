@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #ifndef SCRCPY_OPTIONS_H
 #define SCRCPY_OPTIONS_H
 
@@ -293,6 +294,7 @@ struct scrcpy_options {
     struct sc_port_range port_range;
     uint32_t tunnel_host;
     uint16_t tunnel_port;
+    uint16_t harmony_port;
     uint8_t shortcut_mods; // OR of enum sc_shortcut_mod values
     uint8_t min_size_alignment;
     uint16_t max_size;

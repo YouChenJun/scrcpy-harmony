@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #include "server.h"
 
 #include <assert.h>
@@ -962,10 +963,84 @@ sc_server_kill_adb_if_requested(struct sc_server *server) {
 }
 
 static int
+run_harmony_server(struct sc_server *server) {
+    // Deployment and hdc forwarding are owned by scrcpy-harmony. This backend
+    // only connects to loopback, and shares the normal decoders/controllers.
+    server->serial = sc_get_env("SCRCPY_HARMONY_SERIAL");
+    sc_socket video = net_socket();
+    if (video == SC_SOCKET_NONE) {
+        goto fail;
+    }
+    server->video_socket = video;
+    const char *auth = getenv("SCRCPY_HARMONY_AUTH");
+    if (auth && strlen(auth) != 32) { LOGE("Invalid Harmony session authentication"); goto fail; }
+    if (!net_connect_intr(&server->intr, video, IPV4_LOCALHOST, server->params.harmony_port)) {
+        goto fail;
+    }
+    if (auth && net_send_all(video, auth, 32) != 32) { goto fail; }
+    char dummy;
+    if (net_recv_intr(&server->intr, video, &dummy, 1) != 1) { goto fail; }
+    if (server->params.audio) {
+        sc_socket audio = net_socket();
+        if (audio == SC_SOCKET_NONE) { goto fail; }
+        server->audio_socket = audio;
+        if (!net_connect_intr(&server->intr, audio, IPV4_LOCALHOST,
+                              server->params.harmony_port)) { goto fail; }
+        if (auth && net_send_all(audio, auth, 32) != 32) { goto fail; }
+    }
+    if (server->params.control) {
+        uint16_t control_port = server->params.harmony_port;
+        const char *requested_port = getenv("SCRCPY_HARMONY_CONTROL_PORT");
+        if (requested_port && *requested_port) {
+            long value;
+            if (!sc_str_parse_integer(requested_port, &value) || value < 1 || value > 65535) {
+                LOGE("Invalid SCRCPY_HARMONY_CONTROL_PORT");
+                goto fail;
+            }
+            control_port = (uint16_t) value;
+        }
+        sc_socket control = net_socket();
+        if (control == SC_SOCKET_NONE) {
+            goto fail;
+        }
+        server->control_socket = control;
+        if (!net_connect_intr(&server->intr, control, IPV4_LOCALHOST,
+                              control_port)) {
+            goto fail;
+        }
+        if (auth && net_send_all(control, auth, 32) != 32) { goto fail; }
+        net_set_tcp_nodelay(control, true);
+    }
+    if (!device_read_info(&server->intr, video, &server->info)) {
+        goto fail;
+    }
+    server->cbs->on_connected(server, server->cbs_userdata);
+    sc_mutex_lock(&server->mutex);
+    while (!server->stopped) {
+        sc_cond_wait(&server->cond_stopped, &server->mutex);
+    }
+    sc_mutex_unlock(&server->mutex);
+    net_interrupt(video);
+    if (server->audio_socket != SC_SOCKET_NONE) { net_interrupt(server->audio_socket); }
+    if (server->control_socket != SC_SOCKET_NONE) {
+        net_interrupt(server->control_socket);
+    }
+    return 0;
+
+fail:
+    server->cbs->on_connection_failed(server, server->cbs_userdata);
+    return -1;
+}
+
+static int
 run_server(void *data) {
     struct sc_server *server = data;
 
     const struct sc_server_params *params = &server->params;
+
+    if (params->harmony_port) {
+        return run_harmony_server(server);
+    }
 
     // Execute "adb start-server" before "adb devices" so that daemon starting
     // output/errors is correctly printed in the console ("adb devices" output

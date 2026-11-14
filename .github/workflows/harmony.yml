@@ -1,0 +1,35 @@
+name: Harmony host checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    name: macOS client and launcher tests
+    runs-on: macos-latest
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install desktop dependencies
+        run: brew install meson ninja pkg-config sdl3 ffmpeg libusb
+      - name: Check Python sources
+        run: python3 -m py_compile scrcpy-harmony harmony/*.py
+      - name: Test launcher privilege boundaries
+        run: python3 -m unittest harmony.test_launch_agent -v
+      - name: Build desktop client and run tests
+        run: |
+          meson setup build-ci -Dcompile_server=false -Dbuildtype=debug
+          meson compile -C build-ci
+          meson test -C build-ci --print-errorlogs

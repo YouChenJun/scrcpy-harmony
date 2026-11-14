@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #include "common.h"
 
 #include <assert.h>
@@ -149,7 +150,60 @@ static void test_parse_shortcut_mods(void) {
     assert(!ok);
 }
 
+static void test_harmony(void) {
+    struct scrcpy_cli_args args = {.opts = scrcpy_options_default};
+    char *argv[] = {"scrcpy", "--harmony-port=31234"};
+    assert(scrcpy_parse_args(&args, ARRAY_LEN(argv), argv));
+    assert(args.opts.harmony_port == 31234);
+    assert(args.opts.video);
+    assert(args.opts.control);
+    assert(args.opts.audio);
+    assert(args.opts.clipboard_autosync);
+    assert(args.opts.mouse_hover);
+    assert(args.opts.keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_SDK);
+    assert(args.opts.mouse_input_mode == SC_MOUSE_INPUT_MODE_SDK);
+}
+
+static void test_harmony_invalid_options(void) {
+    const char *invalid[] = {"--harmony-port=0", "--harmony-port=65536",
+        "--no-video", "--no-window", "--video-codec=vp8", "--keyboard=aoa",
+        "--new-display", "--serial=android-device", "--gamepad=aoa",
+        "--audio-encoder=android-only", "--audio-codec-options=profile=1"};
+    for (size_t i = 0; i < ARRAY_LEN(invalid); ++i) {
+        struct scrcpy_cli_args args = {.opts = scrcpy_options_default};
+        char *argv[] = {"scrcpy", "--harmony-port=31234", (char *) invalid[i]};
+        assert(!scrcpy_parse_args(&args, ARRAY_LEN(argv), argv));
+    }
+}
+
+static void test_harmony_media_and_hid(void) {
+    struct scrcpy_cli_args args = {.opts = scrcpy_options_default};
+    char *argv[] = {"scrcpy", "--harmony-port=31234", "--video-codec=h265",
+                    "--audio-codec=raw", "--keyboard=uhid", "--mouse=uhid",
+                    "--gamepad=uhid"};
+    assert(scrcpy_parse_args(&args, ARRAY_LEN(argv), argv));
+    assert(args.opts.video_codec == SC_CODEC_H265);
+    assert(args.opts.audio_codec == SC_CODEC_RAW);
+    assert(args.opts.keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_UHID);
+    assert(args.opts.mouse_input_mode == SC_MOUSE_INPUT_MODE_UHID);
+    assert(args.opts.gamepad_input_mode == SC_GAMEPAD_INPUT_MODE_UHID);
+}
+
+static void test_harmony_record_only(void) {
+    struct scrcpy_cli_args args = {.opts = scrcpy_options_default};
+    char *argv[] = {"scrcpy", "--harmony-port=31234", "--no-control",
+                    "--no-window", "--record=screen.mkv"};
+    assert(scrcpy_parse_args(&args, ARRAY_LEN(argv), argv));
+    assert(args.opts.video);
+    assert(!args.opts.video_playback);
+    assert(!args.opts.control);
+}
+
 int main(int argc, char *argv[]) {
+    test_harmony();
+    test_harmony_invalid_options();
+    test_harmony_media_and_hid();
+    test_harmony_record_only();
     (void) argc;
     (void) argv;
 

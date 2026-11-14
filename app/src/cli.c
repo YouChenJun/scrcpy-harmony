@@ -1,3 +1,4 @@
+/* Modified for scrcpy-harmony; see NOTICE. */
 #include "cli.h"
 
 #include <assert.h>
@@ -112,6 +113,7 @@ enum {
     OPT_IGNORE_VIDEO_ENCODER_CONSTRAINTS,
     OPT_NO_TERMINAL_TITLE,
     OPT_HWDEC,
+    OPT_HARMONY_PORT,
 };
 
 struct sc_option {
@@ -148,6 +150,13 @@ struct sc_getopt_adapter {
 };
 
 static const struct sc_option options[] = {
+    {
+        .longopt_id = OPT_HARMONY_PORT,
+        .longopt = "harmony-port",
+        .argdesc = "port",
+        .text = "Connect to an OpenHarmony server forwarded to this local TCP "
+                "port. Use the scrcpy-harmony launcher to deploy it.",
+    },
     {
         .longopt_id = OPT_ALWAYS_ON_TOP,
         .longopt = "always-on-top",
@@ -2641,6 +2650,13 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
                     return false;
                 }
                 break;
+            case OPT_HARMONY_PORT:
+                if (!parse_port(optarg, &opts->harmony_port)
+                        || !opts->harmony_port) {
+                    LOGE("Invalid Harmony port");
+                    return false;
+                }
+                break;
             case 'n':
                 opts->control = false;
                 break;
@@ -3022,6 +3038,50 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         return false;
     }
 
+    if (opts->harmony_port) {
+        if (!opts->video || (opts->video_codec != SC_CODEC_H264
+                && opts->video_codec != SC_CODEC_H265 && opts->video_codec != SC_CODEC_AV1)
+                || opts->serial || opts->tcpip || opts->select_usb
+                || opts->select_tcpip || opts->list || opts->new_display
+                || opts->display_id || opts->crop
+                || opts->max_size || opts->max_fps || opts->video_bit_rate
+                || opts->video_encoder || opts->video_codec_options
+                || opts->audio_encoder || opts->audio_codec_options
+                || opts->audio_dup || opts->camera_ar || opts->camera_zoom
+                || opts->camera_high_speed
+                || opts->angle || opts->flex_display
+                || opts->power_off_on_close || opts->stay_awake
+                || opts->show_touches || opts->screen_off_timeout != -1
+                || opts->tunnel_host || opts->tunnel_port
+                || opts->capture_orientation_lock != SC_ORIENTATION_UNLOCKED
+                || opts->capture_orientation != SC_ORIENTATION_0
+                || opts->keep_active) {
+            LOGE("Unsupported Harmony capture or deployment option. "
+                 "Use scrcpy-harmony for capture settings and device selection.");
+            return false;
+        }
+#ifdef HAVE_USB
+        if (opts->otg) {
+            LOGE("OTG is not available with Harmony");
+            return false;
+        }
+#endif
+        if ((opts->keyboard_input_mode != SC_KEYBOARD_INPUT_MODE_AUTO
+                && opts->keyboard_input_mode != SC_KEYBOARD_INPUT_MODE_SDK
+                && opts->keyboard_input_mode != SC_KEYBOARD_INPUT_MODE_DISABLED
+                && opts->keyboard_input_mode != SC_KEYBOARD_INPUT_MODE_UHID
+                && opts->keyboard_input_mode != SC_KEYBOARD_INPUT_MODE_UHID_OR_AOA)
+                || (opts->mouse_input_mode != SC_MOUSE_INPUT_MODE_AUTO
+                && opts->mouse_input_mode != SC_MOUSE_INPUT_MODE_SDK
+                && opts->mouse_input_mode != SC_MOUSE_INPUT_MODE_DISABLED
+                && opts->mouse_input_mode != SC_MOUSE_INPUT_MODE_UHID
+                && opts->mouse_input_mode != SC_MOUSE_INPUT_MODE_UHID_OR_AOA)
+                || opts->gamepad_input_mode == SC_GAMEPAD_INPUT_MODE_AOA) {
+            LOGE("Harmony supports SDK or UHID keyboard and mouse input");
+            return false;
+        }
+    }
+
     // If a TCP/IP address is provided, then tcpip must be enabled
     assert(opts->tcpip || !opts->tcpip_dst);
 
@@ -3068,6 +3128,11 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
             && !v4l2) {
         LOGI("No video playback, no recording, no V4L2 sink: video disabled");
         opts->video = false;
+    }
+
+    if (opts->harmony_port && !opts->video) {
+        LOGE("Harmony requires video playback or a recording destination");
+        return false;
     }
 
     if (opts->audio && !opts->audio_playback && !opts->record_filename) {
@@ -3281,6 +3346,7 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
         LOGE("--no-mouse-over is specific to --mouse=sdk");
         return false;
     }
+
 
     if ((opts->tunnel_host || opts->tunnel_port) && !opts->force_adb_forward) {
         LOGI("Tunnel host/port is set, "

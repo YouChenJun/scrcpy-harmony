@@ -1,37 +1,32 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: Harmony bug / 鸿蒙适配问题
+about: Report a reproducible scrcpy-harmony issue / 报告可复现的适配问题
 title: ''
 labels: ''
 assignees: ''
-
 ---
 
-_Please read the [prerequisites] to run scrcpy._
+Please check the [supported scope and prerequisites](https://github.com/YouChenJun/scrcpy-harmony#requirements).
+请先检查支持范围：本版本只支持 root 设备，非 root 零售机尚未验收。
 
-[prerequisites]: https://github.com/Genymobile/scrcpy#prerequisites
+## Environment / 环境
 
-_Also read the [FAQ] and check if your [issue][issues] already exists._
+- scrcpy-harmony commit:
+- Host OS / 电脑系统:
+- Backend (`root` or `agent`):
+- Native SDK version / SDK 版本:
+- Root enabled / 已 root: yes / no
 
-[FAQ]: https://github.com/Genymobile/scrcpy/blob/master/FAQ.md
-[issues]: https://github.com/Genymobile/scrcpy/issues
+## Reproduction / 复现
 
-## Environment
+Provide the command, minimal steps, expected behavior, and actual behavior.
+提供运行命令、最小复现步骤、预期行为和实际结果。
 
- - **OS:** [e.g. Debian, Windows, macOS...]
- - **Scrcpy version:** [e.g. 2.5]
- - **Installation method:** [e.g. manual build, apt, snap, brew, Windows release...]
- - **Device model:**
- - **Android version:** [e.g. 14]
+## Redacted logs / 已脱敏日志
 
-## Describe the bug
+Remove serial numbers, UDIDs, IP addresses, account data, local paths,
+signing profiles, and credentials before posting logs or media.
+发布前请移除设备标识、IP、账号、本机路径、签名文件和凭据。
 
-A clear and concise description of what the bug is.
-
-On errors, please provide the output of the console (and `adb logcat` if relevant).
-
-```
-Please paste terminal output in a code block.
-```
-
-Please do not post screenshots of your terminal, just post the content as text instead.
+Do not upload build-harmony/, private keys, device-bound HAPs, or raw recordings.
+不要上传构建目录、私钥、绑定设备的 HAP 或未经检查的录制文件。

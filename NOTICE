@@ -1,0 +1,22 @@
+scrcpy-harmony
+
+This distribution contains source code derived from scrcpy v5.0.1:
+https://github.com/Genymobile/scrcpy
+Upstream baseline: a60891aea193d92e7e5c3942700eca63f9d19a5f
+
+Upstream copyright notices are retained, including:
+Copyright (C) 2018 Genymobile
+Copyright (C) 2018-2026 Romain Vimont
+
+Harmony adaptation modifications:
+Copyright (C) 2026 ChenDark and scrcpy-harmony contributors
+
+Modifications include the hdc launcher, native Harmony device service,
+companion application, Harmony transport and file-transfer integration,
+related tests, and project documentation. Modified upstream source files
+carry a modification notice; the Git history records the changes.
+
+The upstream work and these modifications are distributed under the
+Apache License, Version 2.0. See LICENSE for the complete license text.
+This independent project is not affiliated with or endorsed by Genymobile
+or Huawei. No third-party SDK binaries or signing keys are bundled.
