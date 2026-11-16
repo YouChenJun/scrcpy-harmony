@@ -3,7 +3,7 @@
 scrcpy-harmony is an experimental derivative of upstream scrcpy. The current
 supported release targets **rooted arm64 HarmonyOS / OpenHarmony devices** and a
 macOS host. Non-root retail-device support has not been validated or released.
-See [English](../README.md) or [简体中文](../README.zh-CN.md) for installation and examples.
+See the default [简体中文 README](../README.md) or [English README](../README.en.md) for installation and examples.
 
 ## Backends
 

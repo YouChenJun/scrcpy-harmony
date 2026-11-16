@@ -1,202 +1,233 @@
 # scrcpy-harmony
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+**简体中文** | [English](README.en.md)
 
-Experimental HarmonyOS / OpenHarmony screen mirroring and control, derived from
-[scrcpy](https://github.com/Genymobile/scrcpy) **v5.0.1**. This project adds an
-hdc deployment path and a native device server while reusing scrcpy's desktop
-client, FFmpeg decoding, SDL display, recording, and control protocol.
+`scrcpy-harmony` 是一个面向 HarmonyOS / OpenHarmony 的实验性投屏与控制工具，基于 [scrcpy](https://github.com/Genymobile/scrcpy) **v5.0.1** 修改。项目保留 scrcpy 的电脑端窗口、FFmpeg 解码、SDL 渲染、录制和控制协议，并为鸿蒙设备重新实现了 hdc 部署链路和原生设备端服务。
 
-**Current supported scope: rooted devices only.** Non-root retail devices have
-not been validated and are not supported by this release. macOS is the validated
-host platform; the Harmony launcher has not been validated on Windows or Linux.
-This is an independent derivative, not an official Genymobile or Huawei project.
+> 当前版本仅支持已 root 的 arm64 鸿蒙设备。未 root 的零售设备尚未完成验证，暂不在支持范围内。
+>
+> 电脑端目前主要验证了 macOS。Windows 和 Linux 的鸿蒙启动器尚未经过完整测试。
+>
+> 本项目是独立维护的第三方衍生项目，不是 Genymobile 或华为官方项目。
 
-## Features and status
+## 主要功能
 
-| Capability | Status |
+| 功能 | 当前状态 |
 | --- | --- |
-| Display mirroring | H.264; optional H.265 when the device provides an encoder |
-| Capture settings | Resolution limit, frame-rate target, video bit rate |
-| Desktop features | Native scrcpy window, fullscreen, scaling, screenshots, recording |
-| Input | Mouse clicks, dragging, scrolling, keyboard input, multi-touch, text paste |
-| Clipboard | Bidirectional text synchronization |
-| Files | File transfer over hdc; `.hap` installation |
-| Device features | Screen-power control and rotation requests, subject to system policies |
-| Additional backends | Companion-app media capture, camera capture, virtual displays, UHID; device dependent |
-| Audio | Experimental; audible capture is not validated. Use `--no-audio` |
-| Non-root control | Not supported by the current release; DevEco/HOScrcpy integration is not implemented |
+| 屏幕投屏 | 支持 H.264；设备具备相应编码器时可使用 H.265 |
+| 画面参数 | 可限制分辨率、设置目标帧率和视频码率 |
+| 电脑端操作 | 全屏、缩放、截图、录像，沿用 scrcpy 的窗口与快捷键 |
+| 输入控制 | 鼠标点击、拖动、滚轮、键盘、多点触控和文字输入 |
+| 剪贴板 | 双向同步文本 |
+| 文件传输 | 通过 hdc 上传文件，并可安装鸿蒙 `.hap` 应用包 |
+| 设备操作 | 可请求电源、旋转等操作，实际效果受系统策略约束 |
+| 扩展采集 | 手机端配套应用采集、摄像头、虚拟屏幕和 UHID，具体支持取决于设备 |
+| 音频 | 功能仍属实验性，尚未验证真实声音输出；目前建议关闭音频 |
+| 非 root 控制 | 尚未实现，当前发布版不支持 |
 
-Requests such as `--max-fps=60` are encoder targets, not measured performance
-guarantees. Root access alone does not guarantee compatibility: some optional
-features rely on system interfaces that vary by firmware.
+帧率和码率参数表示编码目标，不代表在任意画面或设备上都能达到。即使设备已 root，部分系统接口仍可能因固件版本不同而不可用。
 
-## Requirements
+## 安装
 
-- A rooted **arm64 HarmonyOS / OpenHarmony** device with USB debugging enabled.
-- An authorized hdc connection. The native control backend requires access to
-  `/dev/uinput`; UHID modes additionally require `/dev/uhid`.
-- Python **3.9+**, Meson, Ninja, pkg-config, SDL3, FFmpeg, and libusb on the host.
-- An arm64 OpenHarmony Native SDK; API **21** headers are recommended for this source.
-- `hdc` on `PATH`, or its executable path set through `HDC`.
-- For the companion backend: HarmonyOS command-line tools with `hvigorw`, `ohpm`,
-  Java, and a development signing setup accepted by the device.
+### 方式一：Homebrew（推荐，macOS Apple Silicon）
 
-On macOS, install the desktop build dependencies:
+发布包已经包含电脑端程序和 arm64 设备端程序，不需要本地安装 HarmonyOS SDK，也不需要自行编译。
+
+```sh
+brew tap YouChenJun/tap
+brew install scrcpy-harmony
+```
+
+安装后直接运行：
+
+```sh
+scrcpy-harmony --no-audio -w
+```
+
+Homebrew 安装版默认使用 root 后端。首次连接前请确认：
+
+1. 电脑已经安装 `hdc`，并且可以在终端中执行 `hdc list targets`。
+2. 手机已开启开发者模式和 USB 调试。
+3. 手机已经信任当前电脑。
+4. 设备已经 root，并允许本工具访问所需的输入接口。
+
+`--no-audio` 用于关闭当前尚未验收的音频功能，`-w` 用于在投屏期间临时避免自动休眠。
+
+升级和卸载：
+
+```sh
+brew update
+brew upgrade scrcpy-harmony
+
+brew uninstall scrcpy-harmony
+```
+
+当前 Homebrew 包只提供 root 后端。摄像头、手机端配套应用等扩展采集能力仍需要源码、HarmonyOS SDK 和签名环境。
+
+### 方式二：从源码运行
+
+适合开发者调试设备端功能。电脑端构建需要 Python 3.9+、Meson、Ninja、pkg-config、SDL3、FFmpeg 和 libusb。
+
+macOS 可先安装电脑端依赖：
 
 ```sh
 brew install python meson ninja pkg-config sdl3 ffmpeg libusb
 ```
 
-Install the SDK and hdc separately. Specify the Native SDK directory if it is
-not detected automatically:
+还需要准备 arm64 OpenHarmony Native SDK 和 `hdc`。如果启动器不能自动找到 SDK，可以手动设置：
 
 ```sh
 export OHOS_NDK_HOME="/path/to/openharmony/native"
 export PATH="/path/to/openharmony/toolchains:$PATH"
-# Alternatively: export HDC="/path/to/hdc"
+# 也可以直接指定 hdc：export HDC="/path/to/hdc"
 ```
 
-## Homebrew (macOS arm64)
-
-The packaged root backend does not require a local HarmonyOS SDK or source build:
-
-```sh
-brew tap YouChenJun/tap
-brew install scrcpy-harmony
-scrcpy-harmony --backend=root --no-audio -w
-```
-
-`hdc` and device debugging authorization are still required. The companion-app
-backend needs HarmonyOS command-line tools, signing support, and the source tree;
-the Homebrew package is intended for the root backend first.
-
-## Quick start: root backend, no companion app
+然后获取并运行源码：
 
 ```sh
 git clone https://github.com/YouChenJun/scrcpy-harmony.git
 cd scrcpy-harmony
-hdc list targets
 ./scrcpy-harmony --backend=root --no-audio -w
 ```
 
-The launcher builds the client and native server, deploys a temporary device
-process, creates hdc forwards, and opens the mirror window. **The root backend
-does not install the companion app.** A system or firmware may impose additional
-requirements; an unlocked device and an authorized debug connection are still needed.
+源码运行时会自动构建电脑端客户端，并交叉编译设备端服务。第一次构建所需时间会稍长。
 
-Close the window or press `Ctrl+C` in the terminal to disconnect. Session-owned
-forwards, uploaded server files, and virtual input devices are cleaned up on exit.
-`-w` applies a temporary screen-timeout override and restores it when the session ends.
+## 使用方式
 
-If multiple devices are connected, select one with `-s <HDC_TARGET>`; the launcher
-will not choose one arbitrarily.
+### 投屏并控制设备
 
-## Usage examples
-
-### Adjust video quality
+Homebrew 安装版可以直接运行：
 
 ```sh
-./scrcpy-harmony --backend=root --no-audio -w -m 1600 --max-fps=60 -b 6M
-./scrcpy-harmony --backend=root --no-audio --video-codec=h265
-./scrcpy-harmony --backend=root --no-audio --fullscreen
+scrcpy-harmony --no-audio -w
 ```
 
-The defaults are no resolution reduction (`-m 0`), 8 Mbit/s video, and a requested
-frame rate derived from the display refresh rate, capped at 120 fps.
+使用源码时请加上 `--backend=root`：
 
-### Record video or view without control
+```sh
+./scrcpy-harmony --backend=root --no-audio -w
+```
+
+这种模式会把设备端程序临时上传到手机并启动，不会在手机桌面留下配套应用图标。退出时会停止本会话设备进程、删除临时文件并清理 hdc 端口转发。
+
+### 调整画质和帧率
+
+```sh
+# 最长边限制为 1600，目标帧率 60 fps，视频码率 6 Mbit/s
+scrcpy-harmony --no-audio -w -m 1600 --max-fps=60 -b 6M
+
+# 使用 H.265（设备必须具备对应硬件编码器）
+scrcpy-harmony --no-audio --video-codec=h265
+
+# 全屏显示
+scrcpy-harmony --no-audio --fullscreen
+```
+
+默认不缩小画面，视频码率为 8 Mbit/s。未指定帧率时，启动器会根据屏幕刷新率请求帧率，最高为 120 fps。
+
+### 录制或只看不控制
 
 ```sh
 mkdir -p recordings
-./scrcpy-harmony --backend=root --no-audio --record=recordings/screen.mkv
-./scrcpy-harmony --backend=root --no-audio --no-control
-./scrcpy-harmony --backend=root --no-audio --no-control --no-window \
+
+# 投屏并同时录像
+scrcpy-harmony --no-audio --record=recordings/screen.mkv
+
+# 只观看，不向设备发送控制事件
+scrcpy-harmony --no-audio --no-control
+
+# 不开窗口，录制 10 秒
+scrcpy-harmony --no-audio --no-control --no-window \
   --record=recordings/screen.mkv --time-limit=10
 ```
 
-Recording is opt-in. No recording file is created unless `--record` is supplied.
+只有显式传入 `--record` 时才会写录像文件。
 
-### Use the companion media backend
+### 使用手机端配套应用采集
+
+源码模式可以使用手机端配套应用 **Scrcpy Harmony** 完成媒体采集，同时由独立的 root 进程负责控制：
 
 ```sh
 ./scrcpy-harmony --backend=agent --no-audio -w
 ```
 
-`agent` is currently the launcher's default backend. It builds and installs
-**Scrcpy Harmony** for media capture and runs a separate root process for control.
-Follow the device's screen-sharing, camera, or microphone prompts as applicable.
-Installing an app does not remove the current root requirement for control.
+这种方式需要 HarmonyOS 命令行工具、Java、SDK 以及设备可接受的开发签名。手机出现录屏、摄像头或麦克风授权提示时，需要按实际功能进行确认。安装手机端配套应用并不会让当前版本支持非 root 控制。
 
-The build helper can use development signing material bundled with a compatible
-SDK. Whether that signature can be installed depends on the device's policies;
-it is not a universal retail-device signing solution. Device-bound signing
-profiles and build artifacts stay in ignored build output.
-
-### Camera or virtual display
+### 摄像头
 
 ```sh
-./scrcpy-harmony --backend=agent --video-source=camera --camera-facing=front \
-  --camera-size=1280x720 --no-audio --no-control
-
-# Replace the example bundle with an installed application.
-./scrcpy-harmony --backend=agent --no-audio --new-display=1280x720 \
-  --start-app=com.example.app
+./scrcpy-harmony --backend=agent --video-source=camera \
+  --camera-facing=front --camera-size=1280x720 \
+  --no-audio --no-control
 ```
 
-Camera permissions, available camera profiles, virtual-display support, and
-input routing depend on the device. These examples remain within the root-device
-support scope of this project.
+可用摄像头、分辨率和帧率取决于设备。当前示例仍需在支持范围允许的 root 设备上使用。
 
-### Choose the SDK or build only
+### 独立虚拟屏幕
 
 ```sh
-./scrcpy-harmony --sdk /path/to/openharmony/native --backend=root --no-audio
-./scrcpy-harmony --build-only
-./scrcpy-harmony --help
+./scrcpy-harmony --backend=agent --no-audio \
+  --new-display=1280x720 --start-app=com.example.app
 ```
 
-Other compatible desktop options are forwarded to scrcpy. Android-specific or
-unimplemented capture options may be rejected. On macOS the build also creates
-`build-harmony/Scrcpy Harmony.app`; this local wrapper references the checkout
-and its build dependencies and is not a standalone binary distribution.
+将 `com.example.app` 替换为设备上已经安装的应用包名。虚拟屏幕、应用启动和输入路由依赖设备固件支持。
 
-## Controls
+### 连接多台设备
 
-- Left click / drag: touch input; mouse wheel: scrolling.
-- Right click: Back; middle click: Home.
-- `MOD+h`: Home; `MOD+b`: Back; `MOD+s`: recent apps.
-- `MOD+n`: notification panel; `MOD+Shift+n`: quick settings.
-- `MOD+v`: paste text. `MOD` defaults to left Command or left Alt.
+同时连接多台设备时，需要使用 `-s` 指定 hdc 目标：
 
-See the inherited [shortcut reference](doc/shortcuts.md). Some device-side
-shortcuts differ by platform. Files dropped into the mirror window are uploaded
-through hdc; `.hap` files are installed. Android APK files are transferred as
-files and are not installed as native HarmonyOS applications.
+```sh
+scrcpy-harmony -s <HDC_TARGET> --no-audio -w
+```
 
-The SDK keyboard uses committed text from the desktop input method by default.
-Digits, Latin letters, and printable ASCII symbols are injected as key strokes,
-so ordinary typing does not require clipboard access or paste support. Unicode
-text on the main display uses UITest, which may update the device clipboard.
-Explicit paste shortcuts still follow the target application's paste policy.
-`--raw-key-events` remains available for applications requiring physical key
-events, but it does not forward committed desktop IME text.
+不指定时，启动器只会在恰好连接一台设备的情况下继续，不会自动猜测目标设备。
 
-## Architecture
+## 操作说明
+
+| 操作 | 作用 |
+| --- | --- |
+| 鼠标左键、拖动 | 点击、滑动、长按 |
+| 鼠标滚轮 | 上下滚动 |
+| 鼠标右键 | 返回 |
+| 鼠标中键 | 回到桌面 |
+| `MOD+h` | 回到桌面 |
+| `MOD+b` | 返回 |
+| `MOD+s` | 最近任务 |
+| `MOD+n` | 打开通知栏 |
+| `MOD+Shift+n` | 打开快捷设置 |
+| `MOD+v` | 粘贴文字 |
+
+`MOD` 默认是左 Command 或左 Alt。更多按键请查看继承自 scrcpy 的[快捷键文档](doc/shortcuts.md)。
+
+默认键盘模式会读取电脑输入法已经提交的文字。数字、英文和常见符号会转换为真实按键，因此普通输入和验证码输入不依赖剪贴板粘贴。中文等 Unicode 文字在主屏幕上通过 UITest 输入，可能更新设备剪贴板。主动使用粘贴快捷键时，仍需遵守目标应用自己的粘贴限制。
+
+将文件拖入投屏窗口后，文件会通过 hdc 上传；`.hap` 文件会执行安装。Android APK 只会作为普通文件传输，不能作为原生鸿蒙应用安装。
+
+## 架构
 
 ```text
-Device screen / camera -> native capture -> hardware video encoder
-    -> hdc forwarding -> scrcpy protocol -> FFmpeg / SDL desktop client
-Desktop input -> control socket -> native Harmony control backend
+设备屏幕 / 摄像头
+    → 原生采集
+    → 硬件视频编码
+    → scrcpy 视频协议
+    → hdc 端口转发
+    → 电脑端 FFmpeg 解码 / SDL 显示
+
+电脑键盘和鼠标
+    → scrcpy 控制协议
+    → 鸿蒙控制服务
+    → uinput / UHID / 系统输入接口
 ```
 
-- `scrcpy-harmony`: build, device selection, deployment, and cleanup.
-- `harmony/`: native media/control server, platform adapters, companion application.
-- `app/src/`: modified upstream client connection and file-transfer paths.
-- [Harmony implementation notes](doc/harmony.md): backend details and limitations.
-- [Upstream development documentation](doc/develop.md): inherited scrcpy architecture.
+主要目录：
 
-## Build and verification
+- `scrcpy-harmony`：安装检查、设备选择、部署、启动和退出清理。
+- `harmony/`：鸿蒙设备端媒体与控制服务、系统适配和手机端配套应用源码。
+- `app/src/`：基于上游 scrcpy 修改的客户端连接与文件传输代码。
+- [doc/harmony.md](doc/harmony.md)：鸿蒙后端实现细节和限制。
+- [doc/develop.md](doc/develop.md)：继承自 scrcpy 的开发文档。
+
+## 从源码构建和测试
 
 ```sh
 ./scrcpy-harmony --build-only
@@ -205,33 +236,35 @@ meson test -C build-harmony/tests --print-errorlogs
 python3 -m unittest harmony.test_launch_agent -v
 ```
 
-The native SDK is required by `--build-only`. Desktop tests can run without the
-device SDK. Optional live-device checks are documented in [doc/harmony.md](doc/harmony.md).
-They may change the device UI or temporarily use the clipboard; run them only on
-a device you intend to test. Passing desktop tests does not establish firmware compatibility.
+`--build-only` 需要 OpenHarmony Native SDK。电脑端回归测试不需要设备 SDK，但无法代替真机和固件兼容性验证。
 
-## Limitations and contributions
+可选的真机测试会操作设备界面、剪贴板或输入设备，只能在明确用于测试的 root 设备上运行，具体命令见 [doc/harmony.md](doc/harmony.md)。
 
-Audio, firmware compatibility, and parity with Android scrcpy remain ongoing work.
-Non-root retail control is a research direction, not a released backend. AV1,
-rotation, screen-off capture, UHID, and virtual-display behavior depend on system
-capabilities; fixed-orientation apps may override rotation requests.
+## 已知限制
 
-Open issues and pull requests in **this repository** for Harmony adaptation
-problems. Include the backend, commit, host environment, SDK version, and a
-minimal reproduction. Redact serial numbers, UDIDs, IP addresses, account data,
-local paths, signing profiles, and credentials before posting logs or media.
-Please do not report adaptation-specific problems as upstream scrcpy bugs.
+- 当前只支持 root 设备，非 root 零售机尚未验收。
+- 音频采集仍属实验性功能，真实声音输出尚未验证。
+- 未 root 设备的控制后端和 DevEco / HOScrcpy 接入尚未实现。
+- AV1、旋转、息屏采集、UHID 和虚拟屏幕依赖设备固件与硬件能力。
+- 某些应用可能强制保持指定屏幕方向，因此旋转请求不一定会持续生效。
+- 与 Android 版 scrcpy 的全部功能和兼容性仍存在差距。
 
-## Upstream, attribution, and license
+## 反馈问题
 
-This repository retains the upstream scrcpy source and history. The adaptation
-starts from scrcpy **v5.0.1**, commit
-[`a60891ae`](https://github.com/Genymobile/scrcpy/commit/a60891aea193d92e7e5c3942700eca63f9d19a5f).
-Upstream copyright notices and the **Apache License 2.0** are preserved.
-Harmony adaptation changes are also released under Apache-2.0; see [LICENSE](LICENSE)
-and [NOTICE](NOTICE).
+鸿蒙适配相关问题请提交到[本仓库 Issues](https://github.com/YouChenJun/scrcpy-harmony/issues)，并提供：
 
-Thanks to Genymobile, Romain Vimont, and all scrcpy contributors. Third-party SDKs,
-DevEco components, downloaded research projects, signing keys, and local device
-test artifacts are not bundled in this repository and retain their respective terms.
+- 使用的后端（`root` 或 `agent`）
+- 提交版本或 Release 版本
+- 电脑系统版本
+- OpenHarmony SDK 和设备系统版本
+- 能稳定复现问题的最少步骤
+
+发布日志、截图或录像前，请先移除设备序列号、UDID、IP 地址、账号信息、本机路径、签名配置和凭据。该分支专属的问题请不要提交给上游 scrcpy。
+
+## 上游来源、版权与许可证
+
+本仓库保留上游 scrcpy 的源码历史和版权声明。鸿蒙适配基于 scrcpy **v5.0.1**，起始提交为 [`a60891ae`](https://github.com/Genymobile/scrcpy/commit/a60891aea193d92e7e5c3942700eca63f9d19a5f)。
+
+上游项目及本仓库的修改均采用 **Apache License 2.0**，详见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。
+
+感谢 Genymobile、Romain Vimont 以及所有 scrcpy 贡献者。本仓库不附带第三方 SDK、DevEco 组件、签名私钥或用户设备的签名配置。
