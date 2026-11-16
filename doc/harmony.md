@@ -83,6 +83,23 @@ compatibility does not guarantee those interfaces or their ABI on every firmware
 Do not treat a successful API return value as proof that an input or system
 operation had its intended effect; verify observable behavior on a test device.
 
+## Keyboard text and paste
+
+For the Harmony SDK keyboard, the default text mode forwards committed desktop
+IME text instead of mixing letter keys with clipboard-based digit insertion.
+The device maps printable ASCII to real key presses, temporarily reconciles
+modifiers, and restores held keys afterward. Ordinary text entry, including
+numeric/OTP widgets that reject paste, does not require changing the clipboard.
+Navigation keys and shortcuts remain key events; an explicit raw-key selection
+is preserved. Upstream Android keyboard defaults are unchanged.
+
+Non-ASCII text on the physical main display uses the platform UITest text path.
+This may use the clipboard internally. Virtual-display Unicode retains its
+targeted paste path because UITest does not expose a display selector; it must
+not silently type into the physical screen instead. Explicit paste commands
+remain distinct from typing and are subject to application paste restrictions.
+Input failures are reported without including the entered text in server logs.
+
 ## Capture, signing, and limitations
 
 The native root backend does not install a HAP. Companion capture follows the

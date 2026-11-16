@@ -3039,6 +3039,15 @@ parse_args_with_getopt(struct scrcpy_cli_args *args, int argc, char *argv[],
     }
 
     if (opts->harmony_port) {
+        // Harmony receives desktop IME commits as text. The device translates
+        // printable ASCII into real keys, so numbers do not require pasting.
+        // Preserve an explicit --raw-key-events selection.
+        if (opts->control && opts->video_source == SC_VIDEO_SOURCE_DISPLAY
+                && opts->key_inject_mode == SC_KEY_INJECT_MODE_MIXED
+                && (opts->keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_AUTO
+                    || opts->keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_SDK)) {
+            opts->key_inject_mode = SC_KEY_INJECT_MODE_TEXT;
+        }
         if (!opts->video || (opts->video_codec != SC_CODEC_H264
                 && opts->video_codec != SC_CODEC_H265 && opts->video_codec != SC_CODEC_AV1)
                 || opts->serial || opts->tcpip || opts->select_usb

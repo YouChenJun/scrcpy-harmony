@@ -160,6 +160,14 @@ shortcuts differ by platform. Files dropped into the mirror window are uploaded
 through hdc; `.hap` files are installed. Android APK files are transferred as
 files and are not installed as native HarmonyOS applications.
 
+The SDK keyboard uses committed text from the desktop input method by default.
+Digits, Latin letters, and printable ASCII symbols are injected as key strokes,
+so ordinary typing does not require clipboard access or paste support. Unicode
+text on the main display uses UITest, which may update the device clipboard.
+Explicit paste shortcuts still follow the target application's paste policy.
+`--raw-key-events` remains available for applications requiring physical key
+events, but it does not forward committed desktop IME text.
+
 ## Architecture
 
 ```text

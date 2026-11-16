@@ -31,6 +31,7 @@
 #include "native_input.h"
 #include "ability.h"
 #include "camera.h"
+#include "text_input.h"
 #include <multimodalinput/oh_key_code.h>
 
 enum { TOUCH_ACTION_CANCEL, TOUCH_ACTION_DOWN, TOUCH_ACTION_MOVE, TOUCH_ACTION_UP };
@@ -453,14 +454,15 @@ struct Controller {
     void stay_awake() {
         if (command({"/system/bin/power-shell", "timeout", "-o", "3600000"})) { wakeful = true; }
     }
-    void key(int code, bool down, bool repeat = false) {
+    bool key(int code, bool down, bool repeat = false) {
         bool ok;
         if (target_display || display.off()) {
             int mapped = native_keycode(code);
             ok = mapped >= 0 && native_input.key(target_display, mapped, down, repeat);
         } else { ok = input.key(code, down, repeat); }
-        if (!ok) { fprintf(stderr, "[harmony] key injection failed for %d\n", code); }
+        if (!ok) { fprintf(stderr, "[harmony] key injection failed\n"); }
         if (down) { keys[code] = true; } else { keys.erase(code); }
+        return ok;
     }
     void chord(int modifier, int code) {
         key(modifier, true); key(code, true); key(code, false); key(modifier, false);
@@ -502,9 +504,47 @@ struct Controller {
     bool blob(std::vector<uint8_t> &out, uint16_t size) {
         out.resize(size); return read_all(fd, out.data(), size);
     }
-    void paste(const std::string &text) {
-        if (clipboard.set(text)) { chord(KEY_LEFTCTRL, KEY_V); }
-        else { uitest("text", text.c_str()); }
+    bool inject_text(const std::string &text) {
+        sc_harmony_text_key stroke;
+        bool ascii = std::all_of(text.begin(), text.end(), [&](unsigned char c) {
+            return sc_harmony_ascii_key(c, &stroke);
+        });
+        if (!ascii) {
+            // Use the platform's text-input tool on the primary display. A
+            // successful clipboard write alone does not prove text insertion.
+            // UITest has no display selector: never type into the primary
+            // screen when a virtual display was requested.
+            if (!target_display) {
+                return command({"/system/bin/uitest", "uiInput", "text", text});
+            }
+            if (!clipboard.set(text)) { return false; }
+            chord(KEY_LEFTCTRL, KEY_V);
+            return true;
+        }
+        // Resolved desktop text must not depend on Ctrl+V or paste support.
+        // This is required for numeric/OTP fields that reject paste events.
+        // Preserve physically held modifiers while emitting literal text.
+        std::vector<int> modifiers;
+        for (int code : {KEY_LEFTSHIFT, KEY_RIGHTSHIFT, KEY_LEFTCTRL, KEY_RIGHTCTRL,
+                         KEY_LEFTALT, KEY_RIGHTALT, KEY_LEFTMETA, KEY_RIGHTMETA}) {
+            if (keys.count(code)) { modifiers.push_back(code); }
+        }
+        bool ok = true;
+        for (int code : modifiers) { ok &= key(code, false); }
+        bool shifted = false;
+        for (unsigned char c : text) {
+            if (interrupted || !stream.alive) { ok = false; break; }
+            sc_harmony_ascii_key(c, &stroke);
+            if (stroke.shift != shifted) { ok &= key(KEY_LEFTSHIFT, stroke.shift); shifted = stroke.shift; }
+            int code = keycode(stroke.keycode);
+            ok &= key(code, true);
+            usleep(3000);
+            ok &= key(code, false);
+            usleep(3000);
+        }
+        if (shifted) { ok &= key(KEY_LEFTSHIFT, false); }
+        for (int code : modifiers) { ok &= key(code, true); }
+        return ok;
     }
     void run() {
         if (autosync) { clipboard.watch(writer); }
@@ -528,13 +568,13 @@ struct Controller {
                 std::string text;
                 if (!string(text)) { break; }
                 bool ok;
-                if (type == 1) { paste(text); ok = true; }
+                if (type == 1) { ok = inject_text(text); }
                 else {
                     ok = clipboard.set(text);
                     if (ok && b[8]) { chord(KEY_LEFTCTRL, KEY_V); }
                     if (ok && !writer.ack(be64(b))) { break; }
                 }
-                if (!ok) { fprintf(stderr, "[harmony] clipboard write failed\n"); }
+                if (!ok) { fprintf(stderr, "[harmony] %s failed\n", type == 1 ? "text input" : "clipboard write"); }
             } else if (type == 2) {
                 if (!read_all(fd, b, 31)) { break; }
                 uint64_t id = be64(b + 1); int x, y;

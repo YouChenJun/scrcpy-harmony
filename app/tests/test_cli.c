@@ -160,6 +160,7 @@ static void test_harmony(void) {
     assert(args.opts.audio);
     assert(args.opts.clipboard_autosync);
     assert(args.opts.mouse_hover);
+    assert(args.opts.key_inject_mode == SC_KEY_INJECT_MODE_TEXT);
     assert(args.opts.keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_SDK);
     assert(args.opts.mouse_input_mode == SC_MOUSE_INPUT_MODE_SDK);
 }
@@ -199,11 +200,27 @@ static void test_harmony_record_only(void) {
     assert(!args.opts.control);
 }
 
+static void test_harmony_explicit_raw_keys(void) {
+    struct scrcpy_cli_args args = {.opts = scrcpy_options_default};
+    char *argv[] = {"scrcpy", "--harmony-port=31234", "--raw-key-events"};
+    assert(scrcpy_parse_args(&args, ARRAY_LEN(argv), argv));
+    assert(args.opts.key_inject_mode == SC_KEY_INJECT_MODE_RAW);
+}
+
+static void test_android_keeps_mixed_keys(void) {
+    struct scrcpy_cli_args args = {.opts = scrcpy_options_default};
+    char *argv[] = {"scrcpy"};
+    assert(scrcpy_parse_args(&args, ARRAY_LEN(argv), argv));
+    assert(args.opts.key_inject_mode == SC_KEY_INJECT_MODE_MIXED);
+}
+
 int main(int argc, char *argv[]) {
     test_harmony();
     test_harmony_invalid_options();
     test_harmony_media_and_hid();
     test_harmony_record_only();
+    test_harmony_explicit_raw_keys();
+    test_android_keeps_mixed_keys();
     (void) argc;
     (void) argv;
 
