@@ -116,11 +116,13 @@ def bitrate(value, minimum=64000, maximum=100000000):
 
 
 def main():
+    package_installed, _, _ = installed_paths()
     parser = argparse.ArgumentParser(
         description=__doc__, allow_abbrev=False,
         epilog="Other options are passed to scrcpy, e.g. --record=screen.mkv --fullscreen.")
     parser.add_argument("--sdk", help="OpenHarmony native SDK directory")
-    parser.add_argument("--backend", choices=["agent", "root"], default="agent",
+    parser.add_argument("--backend", choices=["agent", "root"],
+                        default="root" if package_installed else "agent",
                         help="media companion (root input when control is enabled), or the native root backend")
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("-s", "--serial", help="hdc target (required when multiple devices are connected)")
@@ -170,6 +172,8 @@ def main():
     if any(x == "--harmony-port" or x.startswith("--harmony-port=") for x in extra):
         parser.error("--harmony-port is managed by this launcher")
     installed, server, client = installed_paths()
+    if installed and args.backend == "agent":
+        raise RuntimeError("The Homebrew package provides the root backend; the agent backend requires a source checkout, HarmonyOS SDK, and device signing setup")
     if not installed:
         server, client = build(native_sdk(args.sdk))
     if args.build_only:

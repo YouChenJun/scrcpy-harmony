@@ -57,6 +57,20 @@ export PATH="/path/to/openharmony/toolchains:$PATH"
 # Alternatively: export HDC="/path/to/hdc"
 ```
 
+## Homebrew (macOS arm64)
+
+The packaged root backend does not require a local HarmonyOS SDK or source build:
+
+```sh
+brew tap YouChenJun/tap
+brew install scrcpy-harmony
+scrcpy-harmony --backend=root --no-audio -w
+```
+
+`hdc` and device debugging authorization are still required. The companion-app
+backend needs HarmonyOS command-line tools, signing support, and the source tree;
+the Homebrew package is intended for the root backend first.
+
 ## Quick start: root backend, no companion app
 
 ```sh

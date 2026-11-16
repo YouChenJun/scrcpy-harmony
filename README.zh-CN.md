@@ -52,6 +52,19 @@ export PATH="/path/to/openharmony/toolchains:$PATH"
 # 也可设置：export HDC="/path/to/hdc"
 ```
 
+## Homebrew 安装（macOS arm64）
+
+预构建 root 后端不要求电脑本地安装 HarmonyOS SDK，也不需要从源码编译：
+
+```sh
+brew tap YouChenJun/tap
+brew install scrcpy-harmony
+scrcpy-harmony --backend=root --no-audio -w
+```
+
+仍需安装 `hdc` 并完成设备调试授权。伴随应用后端需要 HarmonyOS 命令行工具、
+签名环境和源码；Homebrew 包首版以 root 后端为主。
+
 ## 快速开始：root 后端，免安装伴随应用
 
 ```sh
