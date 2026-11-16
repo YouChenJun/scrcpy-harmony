@@ -22,6 +22,19 @@ def run(command, **kwargs):
     return subprocess.run(command, check=True, **kwargs)
 
 
+def installed_paths(root=None):
+    # A package installs an immutable layout next to this launcher:
+    #   scrcpy                     (desktop client)
+    #   scrcpy-harmony-server      (arm64 device server)
+    #   harmony/                   (companion application source)
+    #   share/scrcpy               (icons)
+    root = root or ROOT
+    client = root / "scrcpy"
+    server = root / "scrcpy-harmony-server"
+    installed = (root / "harmony").is_dir() and client.is_file() and server.is_file()
+    return installed, server, client
+
+
 def native_sdk(explicit):
     candidates = [explicit, os.environ.get("OHOS_NDK_HOME"),
                   str(Path.home() / "harmonyos/command-line-tools/sdk/default/openharmony/native")]
@@ -34,7 +47,10 @@ def native_sdk(explicit):
                        "or set OHOS_NDK_HOME (API 21 headers recommended).")
 
 
-def build(sdk):
+def build(sdk, root=None):
+    installed, server, client = installed_paths(root)
+    if installed:
+        return server, client
     for tool in ("meson", "ninja", "pkg-config"):
         if not shutil.which(tool):
             raise RuntimeError(f"Missing {tool}. On macOS: brew install meson ninja sdl3 ffmpeg libusb")
@@ -153,7 +169,9 @@ def main():
     args.no_clipboard_autosync |= "--no-clipboard-autosync" in extra
     if any(x == "--harmony-port" or x.startswith("--harmony-port=") for x in extra):
         parser.error("--harmony-port is managed by this launcher")
-    server, client = build(native_sdk(args.sdk))
+    installed, server, client = installed_paths()
+    if not installed:
+        server, client = build(native_sdk(args.sdk))
     if args.build_only:
         print(f"Built {client}\nBuilt {server}")
         return 0
@@ -256,7 +274,8 @@ def main():
             if process.poll() is not None or time.monotonic() > deadline:
                 raise RuntimeError("Device server did not start. Check the device permissions and SDK/API version.")
         env = os.environ.copy()
-        env.setdefault("SCRCPY_ICON_DIR", str(ROOT / "app/data"))
+        icon_dir = ROOT / "share/scrcpy" if installed else ROOT / "app/data"
+        env.setdefault("SCRCPY_ICON_DIR", str(icon_dir))
         env["HDC"] = hdc
         env["SCRCPY_HARMONY_SERIAL"] = target
         env["SCRCPY_HARMONY_AUTH"] = auth

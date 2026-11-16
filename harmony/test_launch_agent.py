@@ -1,5 +1,6 @@
 """Verify that viewing stays within the authorized app debug sandbox."""
 import json
+import runpy
 from pathlib import Path
 import subprocess
 import tempfile
@@ -8,6 +9,24 @@ import unittest
 from unittest.mock import Mock, patch
 
 from harmony import launch_agent
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+class InstalledLauncherTest(unittest.TestCase):
+    def test_installed_layout_is_used_without_sdk_or_build_tools(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "harmony").mkdir()
+            (root / "scrcpy").write_bytes(b"client")
+            (root / "scrcpy-harmony-server").write_bytes(b"server")
+            module = runpy.run_path(str(ROOT / "scrcpy-harmony"))
+            module["ROOT"] = root
+            installed, server, client = module["installed_paths"](root)
+            self.assertTrue(installed)
+            self.assertEqual(client, root / "scrcpy")
+            self.assertEqual(server, root / "scrcpy-harmony-server")
+            self.assertEqual(module["build"](Path("missing-sdk"), root), (server, client))
 
 
 class AppOnlyLaunchTest(unittest.TestCase):
