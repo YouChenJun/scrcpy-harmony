@@ -146,6 +146,10 @@ This option currently supports only the root backend, the primary display, and
 `--no-audio`. It cannot be combined with `--new-display` or a non-zero
 `--display-id`. The default capture path keeps system privacy protection enabled.
 
+The mirror and recordings request exclusion of the device cursor to avoid
+duplicating the desktop cursor. The phone's cursor remains visible. A warning is
+logged if the firmware does not expose this setting.
+
 ### Use the companion media backend
 
 ```sh

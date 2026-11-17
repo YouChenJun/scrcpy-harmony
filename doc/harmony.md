@@ -58,6 +58,9 @@ build, device selection, upload, forwarding, process ownership, and cleanup.
 - Video reset and display-size changes rebuild the capture/encoder session.
 - Screen capture requests hide the device cursor so it is not duplicated in
   encoded frames. The desktop cursor remains available for interaction.
+  Direct system-overlay mirroring excludes cursor surfaces from its own virtual
+  screen, leaving the physical display's cursor and other system panels intact.
+  A warning is logged if the firmware does not expose the cursor filter.
 - Sockets bind to the device loopback interface. The launcher supplies a random
   session token for every media and control connection.
 - The companion ability accepts a one-use private session file written by the

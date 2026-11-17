@@ -163,6 +163,8 @@ scrcpy-harmony --include-system-overlays --no-audio -w
 
 该选项目前仅支持 root 后端、主屏幕和 `--no-audio`，不能与 `--new-display` 或非 0 的 `--display-id` 同时使用。默认仍保留系统隐私保护。
 
+设备端的鼠标指针会在投屏和录像中隐藏，手机上仍可正常显示；电脑端使用本机光标。若固件不支持隐藏指针，启动日志会提示。
+
 ### 使用手机端配套应用采集
 
 源码模式可以使用手机端配套应用 **Scrcpy Harmony** 完成媒体采集，同时由独立的 root 进程负责控制：

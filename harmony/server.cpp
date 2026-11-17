@@ -242,6 +242,9 @@ struct Stream {
                 direct_mirror_owner->destroy_record_screen();
                 return false;
             }
+            if (!direct_mirror_owner->hide_mirror_cursor()) {
+                fprintf(stderr, "[harmony] mirror cursor exclusion unavailable; device cursor may appear\n");
+            }
             capturing = true;
             fprintf(stderr, "[harmony] direct system-overlay mirror %dx%d @ %d fps\n", w, h, fps);
             return true;

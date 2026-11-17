@@ -152,7 +152,8 @@ public:
         option.width = width; option.height = height; option.user_id = foreground_user();
         option.type = 2; // SCREEN_RECORDING
         option.for_shot = true;
-        option.secure = false;
+        // Retain the normal recording-screen security setting. Disabling it
+        // also bypasses the compositor path that applies cursor exclusions.
         option.supports_focus = false;
         option.supports_input = false;
         owned_virtual = create(instance(), option);
@@ -167,6 +168,27 @@ public:
         int result = mirror(instance(), 0, std::move(targets), mirrored_group);
         fprintf(stderr, "[harmony] direct display mirror: %d, group=%llu\n", result,
                 (unsigned long long)mirrored_group);
+        return result == 0;
+    }
+    bool hide_mirror_cursor() {
+        auto instance = symbol<void *(*)()>("_ZN4OHOS5Rosen14DisplayManager11GetInstanceEv");
+        auto convert = symbol<bool(*)(void *, uint64_t, uint64_t &)>(
+            "_ZN4OHOS5Rosen14DisplayManager27ConvertScreenIdToRsScreenIdEmRm");
+        static void *render = dlopen("librender_service_client.z.so", RTLD_NOW | RTLD_LOCAL);
+        auto render_instance = render ? reinterpret_cast<void *(*)()>(dlsym(render,
+            "_ZN4OHOS5Rosen12RSInterfaces11GetInstanceEv")) : nullptr;
+        auto filter = render ? reinterpret_cast<int32_t(*)(void *, uint64_t, std::vector<uint8_t> &)>(dlsym(render,
+            "_ZN4OHOS5Rosen12RSInterfaces29SetVirtualScreenTypeBlackListEmRNSt3__h6vectorIhNS2_9allocatorIhEEEE")) : nullptr;
+        uint64_t render_screen = UINT64_MAX;
+        if (!instance || !convert || !render_instance || !filter || owned_virtual == UINT64_MAX
+                || !convert(instance(), owned_virtual, render_screen)) { return false; }
+        // Match AVScreenCapture::ShowCursorInner: exclude CURSOR_NODE (11 in
+        // the validated HarmonyOS firmware ABI; upstream enum values differ)
+        // from this virtual screen only. Leave notifications and other system
+        // windows visible, and keep the physical display's cursor unchanged.
+        std::vector<uint8_t> types{11};
+        int32_t result = filter(render_instance(), render_screen, types);
+        fprintf(stderr, "[harmony] mirror cursor exclusion: %d\n", result);
         return result == 0;
     }
     bool stop_mirror() {
