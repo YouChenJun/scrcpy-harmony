@@ -111,6 +111,8 @@ struct Stream {
     std::string video_codec = "h264";
     uint64_t display_id = UINT64_MAX;
     harmony::PlatformDisplay *virtual_owner = nullptr;
+    harmony::PlatformDisplay *direct_mirror_owner = nullptr;
+    bool direct_mirror = false;
     harmony::Camera *camera_owner = nullptr;
     int64_t last_pts = 0;
     OH_AVCodec *encoder = nullptr;
@@ -123,6 +125,7 @@ struct Stream {
         stopping = true;
         capturing = false;
         if (camera_owner) { camera_owner->stop(); }
+        if (direct_mirror && direct_mirror_owner) { direct_mirror_owner->destroy_record_screen(); }
         if (virtual_owner && surface) { virtual_owner->surface(nullptr); }
         if (capture) {
             OH_AVScreenCapture_StopScreenCapture(capture);
@@ -225,6 +228,23 @@ struct Stream {
             bool ok = camera_owner ? camera_owner->start(surface) : virtual_owner->surface(surface);
             capturing = ok;
             return ok;
+        }
+        if (direct_mirror) {
+            if (!direct_mirror_owner || direct_mirror_owner->create_record_screen(w, h) == UINT64_MAX) {
+                fprintf(stderr, "[harmony] direct mirror screen creation failed\n");
+                return false;
+            }
+            uint8_t session[12]{}; session[0] = 0x80;
+            put32(session + 4, w); put32(session + 8, h);
+            if (!write_all(fd, session, sizeof(session)) || OH_VideoEncoder_Start(encoder)
+                    || !direct_mirror_owner->surface(surface)
+                    || !direct_mirror_owner->mirror_primary()) {
+                direct_mirror_owner->destroy_record_screen();
+                return false;
+            }
+            capturing = true;
+            fprintf(stderr, "[harmony] direct system-overlay mirror %dx%d @ %d fps\n", w, h, fps);
+            return true;
         }
         capture = OH_AVScreenCapture_Create();
         if (!capture) { return false; }
@@ -777,6 +797,7 @@ int main(int argc, char **argv) {
     int audio_bitrate = 128000;
     std::string audio_codec = "opus", audio_source = "output", camera_id, video_codec = "h264";
     bool camera_mode = false, camera_front = false, camera_torch = false;
+    bool include_system_overlays = false;
     int camera_width = 0, camera_height = 0, camera_fps = 0;
     std::string auth, session_id;
     int virtual_width = 0, virtual_height = 0;
@@ -798,6 +819,7 @@ int main(int argc, char **argv) {
         else if (arg == "camera_facing=front") { camera_front = true; }
         else if (arg == "camera_facing=back") { camera_front = false; }
         else if (arg == "camera_torch=true") { camera_torch = true; }
+        else if (arg == "include_system_overlays=true") { include_system_overlays = true; }
         else if (arg.rfind("camera_id=", 0) == 0) { camera_id = arg.substr(10); }
         else if (arg.rfind("camera_size=", 0) == 0) {
             if (sscanf(arg.c_str() + 12, "%dx%d", &camera_width, &camera_height) != 2) { return 2; }
@@ -871,6 +893,10 @@ int main(int argc, char **argv) {
         close(input); close(video); return 1;
     }
     Controller controller(input, stream, virtual_input, clipboard_autosync);
+    if (include_system_overlays && !camera_mode && !virtual_width && !media_only) {
+        stream.direct_mirror = true;
+        stream.direct_mirror_owner = &controller.display;
+    }
     if (stay_awake && !media_only) { controller.stay_awake(); }
     if (virtual_width) {
         selected_display = controller.display.create_virtual(virtual_width, virtual_height);

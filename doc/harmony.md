@@ -106,6 +106,16 @@ The native root backend does not install a HAP. Companion capture follows the
 system's screen-sharing and runtime camera/microphone authorization prompts.
 Capture privacy protection is preserved.
 
+Harmony masks system windows such as notification panels, control centers, and
+input methods when system privacy protection is enabled. `AVScreenCapture` may
+continue delivering the underlying app/home frame, so a panel visible on the
+physical display can be absent from the mirror. The root-only
+`--include-system-overlays` option instead mirrors the primary display directly
+through ScreenManager. It bypasses system-window masking and can expose notification
+or input content; it is disabled by default. This direct path currently requires
+`--no-audio`, supports the primary display only, and must not be combined with an
+independent virtual display.
+
 The companion build helper can use the development materials supplied with a
 compatible SDK. Installation is subject to the device's signing policy. The
 helper's bundled-SDK development password is public SDK material, not a user

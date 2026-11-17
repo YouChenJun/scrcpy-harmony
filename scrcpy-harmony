@@ -146,12 +146,20 @@ def main():
     parser.add_argument("--no-clipboard-autosync", action="store_true")
     parser.add_argument("--new-display", nargs="?", const="1280x720")
     parser.add_argument("--display-id", type=bounded_int(0, 100000))
+    parser.add_argument("--include-system-overlays", action="store_true",
+                        help="root backend: mirror system panels and notifications; disables system-window privacy masking")
     args, extra = parser.parse_known_args()
     args.audio_source = args.audio_source or ("mic" if args.video_source == "camera" else "output")
     if args.video_source == "camera" and args.new_display:
         parser.error("--new-display is only available for display capture")
     if args.new_display and args.display_id is not None:
         parser.error("choose --new-display or --display-id")
+    if args.include_system_overlays and (args.backend != "root" or args.video_source != "display"):
+        parser.error("--include-system-overlays requires --backend=root and display capture")
+    if args.include_system_overlays and not args.no_audio:
+        parser.error("--include-system-overlays currently requires --no-audio")
+    if args.include_system_overlays and (args.new_display or args.display_id not in (None, 0)):
+        parser.error("--include-system-overlays only supports the primary display")
     if args.stay_awake and args.no_control:
         parser.error("--stay-awake requires device control")
     if args.video_source == "camera" and (args.display_id is not None or args.audio_source == "output"):
@@ -258,6 +266,7 @@ def main():
         if args.stay_awake: command.append("stay_awake=true")
         if args.new_display: command.append(f"new_display={args.new_display}")
         if args.display_id is not None: command.append(f"display_id={args.display_id}")
+        if args.include_system_overlays: command.append("include_system_overlays=true")
         process = subprocess.Popen([*base, "shell", "exec " + shlex.join(command)],
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, bufsize=1)

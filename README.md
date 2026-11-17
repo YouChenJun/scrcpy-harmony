@@ -143,6 +143,26 @@ scrcpy-harmony --no-audio --no-control --no-window \
 
 只有显式传入 `--record` 时才会写录像文件。
 
+### 显示下拉通知栏和系统面板
+
+默认采集会开启鸿蒙的“屏幕隐私保护”。系统会屏蔽通知栏、控制中心、输入法等系统窗口，因此手机实际已经下拉，电脑画面却仍可能停留在桌面。这是系统的隐私保护行为。
+
+如果设备已 root，并且明确需要在投屏中包含这些系统窗口，可以启用直接显示镜像：
+
+```sh
+scrcpy-harmony --include-system-overlays --no-audio -w
+```
+
+使用源码运行时要固定 root 后端：
+
+```sh
+./scrcpy-harmony --backend=root --include-system-overlays --no-audio -w
+```
+
+> **隐私提示：** 该模式会绕过系统窗口的默认遮罩，通知内容、验证码、聊天预览和输入法内容都可能出现在投屏及录像中。只应在自己控制且明确知道风险的设备上使用。
+
+该选项目前仅支持 root 后端、主屏幕和 `--no-audio`，不能与 `--new-display` 或非 0 的 `--display-id` 同时使用。默认仍保留系统隐私保护。
+
 ### 使用手机端配套应用采集
 
 源码模式可以使用手机端配套应用 **Scrcpy Harmony** 完成媒体采集，同时由独立的 root 进程负责控制：

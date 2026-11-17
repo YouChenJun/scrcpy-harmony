@@ -37,12 +37,12 @@ class PlatformDisplay {
     bool changed_rotation = false, original_rotation_lock = false;
     uint32_t original_orientation = 0;
     uint64_t owned_virtual = UINT64_MAX;
+    uint64_t mirrored_group = UINT64_MAX;
     // OpenHarmony 6.0 ScreenManager's published inner-kit option ABI. Keep the
     // strings short (SSO) and pass only immutable STL values across this bridge.
     struct VirtualOption {
-        // DMS recognizes this platform name to register an independent
-        // SceneBoard desktop, including callers launched through hdc.
-        NativeString name = "GeneralUniqueScreen";
+        NativeString name;
+        VirtualOption(const char *screen_name = "GeneralUniqueScreen") : name(screen_name) {}
         uint32_t width = 0, height = 0;
         float density = 1.0f;
         void *surface = nullptr;
@@ -142,6 +142,47 @@ public:
         fprintf(stderr, "[harmony] virtual display unique mode: %d\n", result);
         if (result) { destroy_virtual(); }
         return owned_virtual;
+    }
+    uint64_t create_record_screen(uint32_t width, uint32_t height) {
+        auto instance = symbol<void *(*)()>("_ZN4OHOS5Rosen13ScreenManager11GetInstanceEv");
+        auto create = symbol<uint64_t(*)(void *, VirtualOption)>(
+            "_ZN4OHOS5Rosen13ScreenManager19CreateVirtualScreenENS0_19VirtualScreenOptionE");
+        if (!instance || !create || !NativeString::available() || owned_virtual != UINT64_MAX) { return UINT64_MAX; }
+        VirtualOption option("screen_capture");
+        option.width = width; option.height = height; option.user_id = foreground_user();
+        option.type = 2; // SCREEN_RECORDING
+        option.for_shot = true;
+        option.secure = false;
+        option.supports_focus = false;
+        option.supports_input = false;
+        owned_virtual = create(instance(), option);
+        return owned_virtual;
+    }
+    bool mirror_primary() {
+        auto instance = symbol<void *(*)()>("_ZN4OHOS5Rosen13ScreenManager11GetInstanceEv");
+        auto mirror = symbol<int32_t(*)(void *, uint64_t, std::vector<uint64_t>, uint64_t &)>(
+            "_ZN4OHOS5Rosen13ScreenManager10MakeMirrorEmNSt3__h6vectorImNS2_9allocatorImEEEERm");
+        if (!instance || !mirror || owned_virtual == UINT64_MAX) { return false; }
+        std::vector<uint64_t> targets{owned_virtual};
+        int result = mirror(instance(), 0, std::move(targets), mirrored_group);
+        fprintf(stderr, "[harmony] direct display mirror: %d, group=%llu\n", result,
+                (unsigned long long)mirrored_group);
+        return result == 0;
+    }
+    bool stop_mirror() {
+        if (mirrored_group == UINT64_MAX || owned_virtual == UINT64_MAX) { return true; }
+        auto instance = symbol<void *(*)()>("_ZN4OHOS5Rosen13ScreenManager11GetInstanceEv");
+        auto stop = symbol<int32_t(*)(void *, const std::vector<uint64_t> &)>(
+            "_ZN4OHOS5Rosen13ScreenManager10StopMirrorERKNSt3__h6vectorImNS2_9allocatorImEEEE");
+        std::vector<uint64_t> targets{owned_virtual};
+        int result = instance && stop ? stop(instance(), targets) : -1;
+        mirrored_group = UINT64_MAX;
+        return result == 0;
+    }
+    uint64_t virtual_screen_id() const { return owned_virtual; }
+    void destroy_record_screen() {
+        stop_mirror();
+        destroy_virtual();
     }
     bool resize_virtual(uint32_t width, uint32_t height) {
         auto instance = symbol<void *(*)()>("_ZN4OHOS5Rosen13ScreenManager11GetInstanceEv");

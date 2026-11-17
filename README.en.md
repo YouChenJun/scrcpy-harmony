@@ -117,6 +117,35 @@ mkdir -p recordings
 
 Recording is opt-in. No recording file is created unless `--record` is supplied.
 
+### Mirror system panels and notifications
+
+Harmony's screen capture privacy protection masks system windows such as the
+notification panel, control center, and input method by default. The physical
+screen may therefore show a panel while the mirrored image remains on the app or
+home screen.
+
+On a rooted device, an explicit opt-in direct-display mode can include those
+windows:
+
+```sh
+scrcpy-harmony --include-system-overlays --no-audio -w
+```
+
+From a source checkout, specify the root backend:
+
+```sh
+./scrcpy-harmony --backend=root --include-system-overlays --no-audio -w
+```
+
+> **Privacy warning:** This mode disables the default masking of system windows.
+> Notification contents, verification codes, message previews, and input-method
+> content may appear in the mirror and in recordings. Use it only on a device you
+> control and only when you accept that exposure.
+
+This option currently supports only the root backend, the primary display, and
+`--no-audio`. It cannot be combined with `--new-display` or a non-zero
+`--display-id`. The default capture path keeps system privacy protection enabled.
+
 ### Use the companion media backend
 
 ```sh
